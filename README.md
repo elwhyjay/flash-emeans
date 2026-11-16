@@ -56,6 +56,31 @@ host-bound.
 | &nbsp;&nbsp;revival | 0.24 s | 0.23 s |
 | total | 13.84 s | 2.78 s |
 
+### Larger k
+
+Same data and IVF1024/nprobe 4, k raised toward the paper's IVF regime
+(Table 3 uses k=2^18 at 100M). The quality law gives batch 2^16 for all three.
+One container per k, so compare within a row; faiss IVF time depends on the
+host (13.08 s here vs 10.18 s above at k=2^16).
+
+| k | exact | IVF, faiss | IVF, flash-emeans | vs exact | vs faiss |
+|---|---|---|---|---|---|
+| 2^16 | 8.48 s | 13.08 s | **2.20 s** | 3.9× | 5.9× |
+| 2^17 | 15.09 s | 17.19 s | **2.72 s** | 5.5× | 6.3× |
+| 2^18 | 28.09 s | 18.19 s | **3.72 s** | 7.6× | 4.9× |
+
+Test MSE, 5 seeds:
+
+| k | exact | IVF, faiss | IVF, flash-emeans |
+|---|---|---|---|
+| 2^16 | 187519 ± 41 | 187106 ± 28 | 187150 ± 25 |
+| 2^17 | 184182 ± 68 | 183189 ± 34 | 183227 ± 55 |
+| 2^18 | 182764 ± 159 | 181249 ± 48 | 181235 ± 61 |
+
+With flash-emeans, route stays at 0.28 s while rebuild (0.61 → 1.38 s) and
+EMA (0.20 → 0.65 s) grow with k: rebuild routes all k centroids every step,
+and EMA reads and writes k×d every step.
+
 ## Usage
 
 ```python
@@ -95,6 +120,8 @@ python bench/bench_ivf.py --ivf --patches route,fine,rebuild,stats
 ```
 
 Rows stay on the GPU in FP32 (64 GiB at 2^24); use `--n` on smaller GPUs.
+`--ncu` under `ncu --profile-from-start off` captures one mid-epoch step per
+variant (add `--clock-control none` where clocks cannot be locked).
 The exact baseline (no `--ivf`) on H100 also needs the CuTe packages listed
 in `third_party/faiss/benchs/e_means/README.md`.
 

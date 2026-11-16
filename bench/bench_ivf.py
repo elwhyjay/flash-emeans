@@ -37,7 +37,10 @@ p.add_argument("--repeat", type=int, default=3)
 p.add_argument("--profile", action="store_true", help="torch.profiler over one extra run")
 p.add_argument("--stages", action="store_true", help="synchronized per-stage wall time, one extra run")
 p.add_argument("--patches", default="",
-               help="flash_emeans features applied cumulatively after the baseline, e.g. route,fine")
+               help="flash_emeans features applied cumulatively after the baseline, e.g. route,fine; "
+                    "'+' joins features into one step, e.g. route+fine+rebuild+stats")
+p.add_argument("--ncu", action="store_true",
+               help="capture one mid-epoch step per variant; run under ncu --profile-from-start off")
 args = p.parse_args()
 os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
 os.environ.setdefault("MASTER_PORT", "29511")
@@ -57,7 +60,7 @@ if args.ivf:  # FP16 IVF needs unit scale; chunked so no second n*d temporary
 seeds = [int(s) for s in args.seeds.split(",")]
 
 
-def train(seed=seeds[0]):
+def train(seed=seeds[0], capture=False):
     cls = EmeansShardedCentroidsIVF if args.ivf else EmeansShardedCentroids
     extra = {"nlist": args.nlist, "nprobe": args.nprobe} if args.ivf else {}
     model = cls(x.shape[1], args.k, nepochs=args.epochs, batch_law="quality", seed=seed,
@@ -71,7 +74,12 @@ def train(seed=seeds[0]):
         order = torch.randperm(len(x), device=device,
                                generator=_torch_generator(device, _epoch_seed(seed, epoch)))
         for b in range(0, len(x), batch):
+            mid = capture and epoch == 0 and b == len(x) // batch // 2 * batch
+            if mid:
+                torch.cuda.profiler.start()
             model.update(model.accumulate(x[order[b:b + batch]]))
+            if mid:
+                torch.cuda.profiler.stop()
         model.end_epoch()
     model.finalize()
     torch.cuda.synchronize()
@@ -99,11 +107,14 @@ def measure(label):
         test = query_mse(model, queries.batches(mean, scale, 1024)) * scale**2
         print(f"[{tag} {label}] seed={seed} train_mse={model.obj[-1].item() / args.n * scale**2:.1f} "
               f"test_mse={test:.1f}", flush=True)
+    if args.ncu:
+        model = None
+        train(capture=True)
 
 
 measure("baseline")
 for name in filter(None, args.patches.split(",")):
-    flash_emeans.enable(name)
+    flash_emeans.enable(*name.split("+"))
     measure(f"+{name}")
 
 if args.profile:
