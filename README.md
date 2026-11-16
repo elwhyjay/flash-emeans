@@ -34,22 +34,43 @@ flash_emeans.enable()  # or enable("route", "fine")
 # then train EmeansShardedCentroidsIVF as usual
 ```
 
-Requires a CUDA GPU, torch, triton, and `faiss.contrib.e_means` from the
-faiss commit pinned in `third_party/faiss` (not in a faiss release yet).
 Unsupported inputs (CPU, d % 128 != 0, non power-of-two nprobe,
 deterministic mode for `stats`) fall back to the original faiss code.
+
+## Setup
+
+Needs a CUDA GPU with torch and triton. `faiss.contrib.e_means` is not in a
+faiss release yet, so link the copy pinned in `third_party/faiss`:
+
+```bash
+git clone --recurse-submodules https://github.com/elwhyjay/flash-emeans.git
+cd flash-emeans
+pip install -e . faiss-cpu==1.15.1
+ln -s "$PWD/third_party/faiss/contrib/e_means" \
+    "$(python -c 'import faiss, os; print(os.path.dirname(faiss.__file__))')/contrib/e_means"
+python tests/test_kernels.py
+```
+
+## Benchmark
+
+First 2^24 DINO10B rows (17 GB) and the held-out queries:
+
+```bash
+U=https://dl.fbaipublicfiles.com/large_objects/dino_vitl_10B
+mkdir -p data/DINO10B/chunked_base_10B
+curl -L -o data/DINO10B/queries_clean.bvecs $U/queries_clean.bvecs
+curl -L --range 0-17246978047 -o data/DINO10B/chunked_base_10B/chunk_0000.bvecs \
+    $U/chunked_base_10B/chunk_0000.bvecs
+python bench/bench_ivf.py --ivf --patches route,fine,rebuild,stats
+```
+
+Rows stay on the GPU in FP32 (64 GiB at 2^24); use `--n` on smaller GPUs.
+The exact baseline (no `--ivf`) on H100 also needs the CuTe packages listed
+in `third_party/faiss/benchs/e_means/README.md`.
 
 ## Layout
 
 - `src/flash_emeans/kernels/`: faiss-independent kernels (upstream candidates)
 - `src/flash_emeans/patch.py`: installs them into `faiss.contrib.e_means`
 - `tests/`: each patch against the original, synthetic data
-- `bench/`: DINO benchmark and the Modal runner
-
-```bash
-uv sync
-uv run modal run bench/modal_app.py::download
-uv run modal run bench/modal_app.py::run --cmd "python tests/test_kernels.py"
-uv run modal run bench/modal_app.py::run \
-    --cmd "python bench/bench_ivf.py --ivf --patches route,fine,rebuild,stats"
-```
+- `bench/`: DINO benchmark

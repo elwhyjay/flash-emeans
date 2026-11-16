@@ -1,6 +1,7 @@
 .DS_Store
 __pycache__/
 .venv
-/out
+/data
+/modal_app.py
 /flash-kmeans
 emeans.pdf

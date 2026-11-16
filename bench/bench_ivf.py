@@ -3,27 +3,29 @@ one process, with the paper's protocol (untimed identical warm-up, then
 timed runs).
 
 Mirrors faiss benchs/e_means/demo_sharded_centroids.py on one GPU, minus
-per-epoch test evaluation. Compare variants only within one run: Modal hosts
-differ in CPU speed and the unpatched IVF path is partly host-bound.
+per-epoch test evaluation. Compare variants only within one run: the
+unpatched IVF path is partly host-bound, so its time depends on the CPU.
 """
 import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
 import torch
 import torch.distributed as dist
 
 import flash_emeans
 
-sys.path.insert(0, "/root/faiss_bench")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]
+                       / "third_party/faiss/benchs/e_means"))
 from dino_data import DinoBvecs, DinoQueries, query_mse  # noqa: E402
 from faiss.contrib.e_means import EmeansShardedCentroids, EmeansShardedCentroidsIVF  # noqa: E402
 from faiss.contrib.e_means.base import _epoch_seed  # noqa: E402
 from faiss.contrib.e_means.e_means_torch import _torch_generator  # noqa: E402
 
 p = argparse.ArgumentParser()
-p.add_argument("--data", default="/data/DINO10B")
+p.add_argument("--data", default="data/DINO10B")
 p.add_argument("--n", type=int, default=1 << 24)
 p.add_argument("--k", type=int, default=1 << 16)
 p.add_argument("--epochs", type=int, default=2)

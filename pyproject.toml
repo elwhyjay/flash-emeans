@@ -12,9 +12,6 @@ dependencies = [
     "triton>=3.9; sys_platform == 'linux'",
 ]
 
-[dependency-groups]
-dev = ["modal>=1.6.4"]
-
 [build-system]
 requires = ["uv_build>=0.10,<0.11"]
 build-backend = "uv_build"
