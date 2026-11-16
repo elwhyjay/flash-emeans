@@ -81,6 +81,36 @@ With flash-emeans, route stays at 0.28 s while rebuild (0.61 → 1.38 s) and
 EMA (0.20 → 0.65 s) grow with k: rebuild routes all k centroids every step,
 and EMA reads and writes k×d every step.
 
+### Kernel efficiency
+
+`ncu --set full --clock-control none` on one mid-epoch step with all features
+enabled (`--ncu`). SM clocks are not locked (1.77–1.99 GHz), and ncu flushes
+caches before each kernel. The tensor rate counts executed FP16 WGMMA,
+including tile padding; the percentage is of ncu's dense FP16 peak at the
+measured clock.
+
+| kernel | k | time | FP16 tensor | DRAM | L2 |
+|---|---|---|---|---|---|
+| `route`, batch rows (nprobe 4) | 2^16 | 407 µs | 338 TFLOP/s (35%) | 0.55 TB/s (17%) | 74% |
+| | 2^18 | 393 µs | 349 TFLOP/s (36%) | 0.48 TB/s (14%) | 43% |
+| `route`, rebuild (nprobe 1) | 2^16 | 400 µs | 344 TFLOP/s (36%) | 2.70 TB/s (81%) | 79% |
+| | 2^18 | 1249 µs | 440 TFLOP/s (46%) | 0.65 TB/s (19%) | 61% |
+| `fine` | 2^16 | 514 µs | 115 TFLOP/s (12%) | 2.58 TB/s (77%) | 87% |
+| | 2^18 | 814 µs | 295 TFLOP/s (31%) | 2.07 TB/s (62%) | 81% |
+
+- `route` is bound by neither compute nor memory. It runs 8 warps per SM
+  (188–244 registers, up to 193 KB shared memory) and stalls mostly on
+  `wait` and `barrier`. nprobe 4 costs 27% more per row than nprobe 1,
+  because the top-k epilogue does not overlap the MMA. In the k=2^16 rebuild,
+  the autotuner picked 256-row tiles whose operands do not stay in L2: it
+  reads 1 GiB from DRAM for 128 MiB of rows.
+- `fine` is bandwidth-bound (L2 at 81–87%). Each query tile re-reads the
+  centroids of its list, and query rows are gathered once per probe.
+- The memory-bound kernels: `row_norms` reaches 2.8–3.0 TB/s (82–90% of
+  DRAM peak) and the `stats` accumulation 2.4 TB/s (72%). The faiss Triton
+  EMA uses 2 rows per CTA, so it launches k/2 CTAs, and it falls from
+  2.73 TB/s at k=2^16 to 1.09 TB/s at k=2^18.
+
 ## Usage
 
 ```python
