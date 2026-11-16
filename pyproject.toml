@@ -1,0 +1,20 @@
+[project]
+name = "flash-emeans"
+version = "0.1.0"
+description = "Fused Triton kernels for IVF assignment in faiss e-means"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# CUDA-only; versions are the ones tested. faiss.contrib.e_means is not in a
+# faiss release yet: use the checkout pinned in third_party/faiss.
+dependencies = [
+    "torch>=2.15; sys_platform == 'linux'",
+    "triton>=3.9; sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = ["modal>=1.6.4"]
+
+[build-system]
+requires = ["uv_build>=0.10,<0.11"]
+build-backend = "uv_build"
