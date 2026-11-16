@@ -12,7 +12,7 @@ same process; test MSE is over 5 seeds.
 
 | | time | test MSE |
 |---|---|---|
-| exact assignment | 8.25 s | |
+| exact assignment | 8.25 s | 187519 ± 41 |
 | IVF, faiss | 10.18 s | 187157 ± 27 |
 | IVF, flash-emeans | **1.97 s** | 187159 ± 34 |
 
@@ -25,6 +25,36 @@ same process; test MSE is over 5 seeds.
 
 Each kernel returns the same winners as the faiss code it replaces, up to
 FP32 accumulation-order ties (`tests/test_kernels.py`).
+
+### Breakdown
+
+Features enabled cumulatively, same process as above:
+
+| | time | test MSE |
+|---|---|---|
+| faiss | 10.18 s | 187157 ± 27 |
+| + `route` | 8.00 s | 187184 ± 39 |
+| + `fine` | 4.48 s | 187178 ± 54 |
+| + `rebuild` | 4.13 s | 187155 ± 29 |
+| + `stats` | 1.97 s | 187159 ± 34 |
+
+Per stage (`--stages`, one synchronized run each). Both columns come from one
+container on a slower host than above; the unpatched path is partly
+host-bound.
+
+| stage | faiss | flash-emeans |
+|---|---|---|
+| rebuild IVF | 1.24 s | 0.62 s |
+| batch rows + route | 4.38 s | 0.45 s |
+| &nbsp;&nbsp;route | 4.21 s | 0.29 s |
+| assignment | 4.59 s | 0.51 s |
+| &nbsp;&nbsp;bucket sort | 0.19 s | 0.19 s |
+| &nbsp;&nbsp;chunk planning (host) | 0.94 s | |
+| accumulate sums/counts | 1.77 s | 0.32 s |
+| EMA + revival | 1.41 s | 0.46 s |
+| &nbsp;&nbsp;EMA | 1.15 s | 0.20 s |
+| &nbsp;&nbsp;revival | 0.24 s | 0.23 s |
+| total | 13.84 s | 2.78 s |
 
 ## Usage
 
