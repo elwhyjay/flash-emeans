@@ -78,8 +78,9 @@ Test MSE, 5 seeds:
 | 2^18 | 182764 ± 159 | 181249 ± 48 | 181235 ± 61 |
 
 With flash-emeans, route stays at 0.28 s while rebuild (0.61 → 1.38 s) and
-EMA (0.20 → 0.65 s) grow with k: rebuild routes all k centroids every step,
-and EMA reads and writes k×d every step.
+EMA (0.20 → 0.65 s) grow with k. Rebuild routes all k centroids every step.
+The EMA grid grows with k, although its work is bounded by the batch (see
+below).
 
 ### Kernel efficiency
 
@@ -107,9 +108,13 @@ measured clock.
 - `fine` is bandwidth-bound (L2 at 81–87%). Each query tile re-reads the
   centroids of its list, and query rows are gathered once per probe.
 - The memory-bound kernels: `row_norms` reaches 2.8–3.0 TB/s (82–90% of
-  DRAM peak) and the `stats` accumulation 2.4 TB/s (72%). The faiss Triton
-  EMA uses 2 rows per CTA, so it launches k/2 CTAs, and it falls from
-  2.73 TB/s at k=2^16 to 1.09 TB/s at k=2^18.
+  DRAM peak) and the `stats` accumulation 2.4 TB/s (72%).
+- The faiss Triton EMA moves data only for centroids that received rows in
+  the batch, so its work is bounded by the batch size (2^16). Its grid,
+  however, grows with k (k/2 CTAs). DRAM traffic matches about 12 KiB per
+  moved centroid, which gives 59% of k moved at k=2^16 and 22% at k=2^18.
+  At k=2^16 the kernel runs at 2.73 TB/s. At k=2^18 it takes 629 µs, while
+  moving the same bytes at 2.8 TB/s would take about 245 µs.
 
 ## Usage
 
